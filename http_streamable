@@ -1,781 +1,233 @@
 """
-FastMCP Deployment Configuration Examples
-Demonstrates various deployment scenarios for FastMCP servers with Streamable HTTP
+FastMCP Server with Streamable HTTP Transport Implementation
+Latest Protocol as of 2025
+
+This example demonstrates how to create a FastMCP server using the new
+Streamable HTTP transport which is the recommended approach for remote
+MCP servers.
 """
 
-import os
 from fastmcp import FastMCP
-from fastapi import FastAPI
-import uvicorn
+from typing import Dict, Any, List
+import asyncio
+import json
 
-# =============================================================================
-# 1. Basic Standalone Server
-# =============================================================================
-
-def create_basic_server():
-    """Create a basic FastMCP server for standalone deployment"""
-    
-    mcp = FastMCP(
-        name="production-server",
-        version="1.0.0",
-        description="Production FastMCP server"
-    )
-    
-    @mcp.tool()
-    def health_check() -> dict:
-        """Health check endpoint"""
-        return {"status": "healthy", "timestamp": "2025-07-09"}
-    
-    @mcp.tool()
-    def get_server_info() -> dict:
-        """Get server information"""
-        return {
-            "name": "Production MCP Server",
-            "version": "1.0.0",
-            "transport": "streamable-http",
-            "environment": os.getenv("ENVIRONMENT", "production")
-        }
-    
-    return mcp
-
-# =============================================================================
-# 2. Docker Deployment Configuration
-# =============================================================================
-
-def create_docker_server():
-    """Create FastMCP server optimized for Docker deployment"""
-    
-    mcp = FastMCP(
-        name="docker-mcp-server",
-        version="1.0.0"
-    )
-    
-    @mcp.tool()
-    def container_info() -> dict:
-        """Get container environment information"""
-        return {
-            "hostname": os.getenv("HOSTNAME", "unknown"),
-            "port": os.getenv("PORT", "8000"),
-            "environment": os.getenv("ENVIRONMENT", "production"),
-            "version": os.getenv("VERSION", "latest")
-        }
-    
-    def run_docker_server():
-        """Run server with Docker-optimized settings"""
-        port = int(os.getenv("PORT", "8000"))
-        host = os.getenv("HOST", "0.0.0.0")
-        
-        mcp.run(
-            transport="streamable-http",
-            host=host,
-            port=port,
-            path="/mcp",
-            log_level="info"
-        )
-    
-    return mcp, run_docker_server
-
-# =============================================================================
-# 3. Cloud Run / Serverless Deployment
-# =============================================================================
-
-def create_cloud_run_server():
-    """Create FastMCP server for Google Cloud Run deployment"""
-    
-    mcp = FastMCP(
-        name="cloud-run-mcp",
-        version="1.0.0",
-        # Enable stateless mode for serverless environments
-        stateless_http=True
-    )
-    
-    @mcp.tool()
-    def cloud_info() -> dict:
-        """Get cloud environment information"""
-        return {
-            "service": os.getenv("K_SERVICE", "unknown"),
-            "revision": os.getenv("K_REVISION", "unknown"),
-            "region": os.getenv("GOOGLE_CLOUD_REGION", "unknown"),
-            "project": os.getenv("GOOGLE_CLOUD_PROJECT", "unknown")
-        }
-    
-    @mcp.tool()
-    def process_request(data: str) -> dict:
-        """Process a request in stateless mode"""
-        return {
-            "processed": True,
-            "data_length": len(data),
-            "timestamp": "2025-07-09"
-        }
-    
-    def run_cloud_run():
-        """Run server optimized for Cloud Run"""
-        port = int(os.getenv("PORT", "8080"))
-        
-        mcp.run(
-            transport="streamable-http",
-            host="0.0.0.0",
-            port=port,
-            path="/mcp",
-            log_level="info"
-        )
-    
-    return mcp, run_cloud_run
-
-# =============================================================================
-# 4. FastAPI Integration for Advanced Deployments
-# =============================================================================
-
-def create_fastapi_integrated_server():
-    """Create FastMCP server integrated with FastAPI"""
-    
-    # Create FastMCP server
-    mcp = FastMCP(
-        name="fastapi-mcp-server",
-        version="1.0.0"
-    )
-    
-    @mcp.tool()
-    def mcp_specific_tool(param: str) -> dict:
-        """MCP-specific tool"""
-        return {"mcp_result": f"Processed: {param}"}
-    
-    # Create FastAPI app
-    app = FastAPI(
-        title="FastMCP + FastAPI Integration",
-        description="Combined FastAPI and FastMCP server",
-        version="1.0.0"
-    )
-    
-    # Mount FastMCP server
-    app.mount("/mcp", mcp.streamable_http_app())
-    
-    # Add FastAPI routes
-    @app.get("/")
-    async def root():
-        return {"message": "FastMCP + FastAPI Server", "mcp_endpoint": "/mcp"}
-    
-    @app.get("/health")
-    async def health():
-        return {"status": "healthy", "services": ["fastapi", "fastmcp"]}
-    
-    @app.get("/api/stats")
-    async def stats():
-        return {
-            "mcp_tools": len(mcp.list_tools()),
-            "mcp_resources": len(mcp.list_resources()),
-            "mcp_prompts": len(mcp.list_prompts())
-        }
-    
-    return app, mcp
-
-# =============================================================================
-# 5. Load Balancer / Multiple Instance Configuration
-# =============================================================================
-
-def create_load_balanced_server():
-    """Create FastMCP server for load-balanced deployment"""
-    
-    instance_id = os.getenv("INSTANCE_ID", "unknown")
-    
-    mcp = FastMCP(
-        name=f"lb-mcp-server-{instance_id}",
-        version="1.0.0",
-        stateless_http=True  # Important for load balancing
-    )
-    
-    @mcp.tool()
-    def instance_info() -> dict:
-        """Get instance information"""
-        return {
-            "instance_id": instance_id,
-            "hostname": os.getenv("HOSTNAME", "unknown"),
-            "load_balancer": True,
-            "stateless": True
-        }
-    
-    @mcp.tool()
-    def distributed_task(task_id: str) -> dict:
-        """Process a distributed task"""
-        return {
-            "task_id": task_id,
-            "processed_by": instance_id,
-            "timestamp": "2025-07-09"
-        }
-    
-    return mcp
-
-# =============================================================================
-# 6. Development Server with Auto-reload
-# =============================================================================
-
-def create_development_server():
-    """Create FastMCP server for development with auto-reload"""
-    
-    mcp = FastMCP(
-        name="dev-mcp-server",
-        version="dev"
-    )
-    
-    @mcp.tool()
-    def dev_tool(test_param: str) -> dict:
-        """Development testing tool"""
-        return {"dev_result": f"Testing: {test_param}"}
-    
-    @mcp.resource("dev://logs")
-    def dev_logs() -> str:
-        """Development logs resource"""
-        return "Development mode logs would be here"
-    
-    def run_dev_server():
-        """Run development server with auto-reload"""
-        mcp.run(
-            transport="streamable-http",
-            host="127.0.0.1",
-            port=8000,
-            path="/mcp",
-            log_level="debug"
-        )
-    
-    return mcp, run_dev_server
-
-# =============================================================================
-# 7. Authentication-enabled Server
-# =============================================================================
-
-def create_authenticated_server():
-    """Create FastMCP server with authentication"""
-    
-    mcp = FastMCP(
-        name="auth-mcp-server",
-        version="1.0.0"
-    )
-    
-    # Note: This is a simplified example
-    # In production, use proper authentication middleware
-    @mcp.tool()
-    def protected_resource(api_key: str) -> dict:
-        """Access protected resource with API key"""
-        if api_key != os.getenv("API_KEY", "secret"):
-            return {"error": "Invalid API key"}
-        
-        return {"data": "Protected resource accessed", "authenticated": True}
-    
-    @mcp.tool()
-    def public_info() -> dict:
-        """Public information endpoint"""
-        return {"message": "This is public information"}
-    
-    return mcp
-
-# =============================================================================
-# Main Deployment Functions
-# =============================================================================
-
-def main():
-    """Main deployment function - choose your deployment type"""
-    
-    deployment_type = os.getenv("DEPLOYMENT_TYPE", "basic")
-    
-    if deployment_type == "basic":
-        server = create_basic_server()
-        server.run(
-            transport="streamable-http",
-            host="0.0.0.0",
-            port=8000,
-            path="/mcp"
-        )
-    
-    elif deployment_type == "docker":
-        server, run_func = create_docker_server()
-        run_func()
-    
-    elif deployment_type == "cloud-run":
-        server, run_func = create_cloud_run_server()
-        run_func()
-    
-    elif deployment_type == "fastapi":
-        app, mcp_server = create_fastapi_integrated_server()
-        port = int(os.getenv("PORT", "8000"))
-        uvicorn.run(app, host="0.0.0.0", port=port)
-    
-    elif deployment_type == "load-balanced":
-        server = create_load_balanced_server()
-        server.run(
-            transport="streamable-http",
-            host="0.0.0.0",
-            port=int(os.getenv("PORT", "8000")),
-            path="/mcp"
-        )
-    
-    elif deployment_type == "development":
-        server, run_func = create_development_server()
-        run_func()
-    
-    elif deployment_type == "auth":
-        server = create_authenticated_server()
-        server.run(
-            transport="streamable-http",
-            host="0.0.0.0",
-            port=8000,
-            path="/mcp"
-        )
-    
-    else:
-        raise ValueError(f"Unknown deployment type: {deployment_type}")
-
-if __name__ == "__main__":
-    main()
-
-# =============================================================================
-# Docker Configuration Examples
-# =============================================================================
-
-DOCKERFILE_EXAMPLE = """
-# Dockerfile for FastMCP server
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV DEPLOYMENT_TYPE=docker
-ENV PORT=8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:$PORT/health || exit 1
-
-# Run the server
-CMD ["python", "deployment_config.py"]
-"""
-
-DOCKER_COMPOSE_EXAMPLE = """
-version: '3.8'
-
-services:
-  fastmcp-server:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - DEPLOYMENT_TYPE=docker
-      - ENVIRONMENT=production
-      - PORT=8000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-  fastmcp-dev:
-    build: .
-    ports:
-      - "8001:8000"
-    environment:
-      - DEPLOYMENT_TYPE=development
-      - ENVIRONMENT=development
-      - PORT=8000
-    volumes:
-      - .:/app
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-    depends_on:
-      - fastmcp-server
-    restart: unless-stopped
-"""
-
-NGINX_CONFIG_EXAMPLE = """
-events {
-    worker_connections 1024;
-}
-
-http {
-    upstream fastmcp_backend {
-        server fastmcp-server:8000;
-        # Add more servers for load balancing
-        # server fastmcp-server2:8000;
-    }
-
-    server {
-        listen 80;
-        server_name localhost;
-
-        location /mcp {
-            proxy_pass http://fastmcp_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # Important for Streamable HTTP
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_buffering off;
-            proxy_cache off;
-        }
-
-        location /health {
-            proxy_pass http://fastmcp_backend/health;
-        }
-    }
-}
-"""
-
-REQUIREMENTS_TXT = """
-# Requirements for FastMCP server deployment
-fastmcp>=2.3.0
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-pydantic>=2.5.0
-httpx>=0.25.0
-python-multipart>=0.0.6
-"""
-
-CLOUD_RUN_YAML = """
-# Cloud Run service configuration
-apiVersion: serving.knative.dev/v1
-kind: Service
-metadata:
-  name: fastmcp-server
-  annotations:
-    run.googleapis.com/ingress: all
-spec:
-  template:
-    metadata:
-      annotations:
-        run.googleapis.com/execution-environment: gen2
-        run.googleapis.com/cpu-throttling: "false"
-    spec:
-      containerConcurrency: 1000
-      timeoutSeconds: 300
-      containers:
-      - image: gcr.io/PROJECT_ID/fastmcp-server:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: DEPLOYMENT_TYPE
-          value: "cloud-run"
-        - name: PORT
-          value: "8080"
-        resources:
-          limits:
-            cpu: 1000m
-            memory: 512Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-"""
-
-KUBERNETES_DEPLOYMENT = """
-# Kubernetes deployment for FastMCP server
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: fastmcp-server
-  labels:
-    app: fastmcp-server
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: fastmcp-server
-  template:
-    metadata:
-      labels:
-        app: fastmcp-server
-    spec:
-      containers:
-      - name: fastmcp-server
-        image: fastmcp-server:latest
-        ports:
-        - containerPort: 8000
-        env:
-        - name: DEPLOYMENT_TYPE
-          value: "load-balanced"
-        - name: INSTANCE_ID
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastmcp-service
-spec:
-  selector:
-    app: fastmcp-server
-  ports:
-  - port: 80
-    targetPort: 8000
-  type: LoadBalancer
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: fastmcp-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  rules:
-  - host: fastmcp.example.com
-    http:
-      paths:
-      - path: /mcp
-        pathType: Prefix
-        backend:
-          service:
-            name: fastmcp-service
-            port:
-              number: 80
-"""
-
-# =============================================================================
-# Environment Configuration Examples
-# =============================================================================
-
-ENV_DEVELOPMENT = """
-# Development environment variables
-DEPLOYMENT_TYPE=development
-ENVIRONMENT=development
-LOG_LEVEL=debug
-PORT=8000
-HOST=127.0.0.1
-MCP_PATH=/mcp
-"""
-
-ENV_PRODUCTION = """
-# Production environment variables
-DEPLOYMENT_TYPE=basic
-ENVIRONMENT=production
-LOG_LEVEL=info
-PORT=8000
-HOST=0.0.0.0
-MCP_PATH=/mcp
-API_KEY=your-secure-api-key-here
-"""
-
-ENV_DOCKER = """
-# Docker environment variables
-DEPLOYMENT_TYPE=docker
-ENVIRONMENT=production
-PORT=8000
-HOST=0.0.0.0
-VERSION=latest
-"""
-
-ENV_CLOUD_RUN = """
-# Cloud Run environment variables
-DEPLOYMENT_TYPE=cloud-run
-ENVIRONMENT=production
-PORT=8080
-GOOGLE_CLOUD_PROJECT=your-project-id
-GOOGLE_CLOUD_REGION=us-central1
-"""
-
-# =============================================================================
-# Monitoring and Logging Configuration
-# =============================================================================
-
-MONITORING_CONFIG = """
-# Example monitoring configuration for FastMCP server
-import logging
-import time
-from fastmcp import FastMCP
-from fastapi import FastAPI, Request
-from fastapi.middleware.base import BaseHTTPMiddleware
-import structlog
-
-# Configure structured logging
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.JSONRenderer()
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    wrapper_class=structlog.stdlib.BoundLogger,
-    cache_logger_on_first_use=True,
+# Initialize FastMCP server
+mcp = FastMCP(
+    name="demo-server",
+    version="1.0.0",
+    description="Demo FastMCP server with Streamable HTTP transport"
 )
 
-class LoggingMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app):
-        super().__init__(app)
-        self.logger = structlog.get_logger()
+# Sample data store (in production, use a proper database)
+data_store = {
+    "users": [
+        {"id": 1, "name": "Alice", "email": "alice@example.com"},
+        {"id": 2, "name": "Bob", "email": "bob@example.com"}
+    ],
+    "tasks": [
+        {"id": 1, "title": "Review code", "completed": False, "user_id": 1},
+        {"id": 2, "title": "Deploy app", "completed": True, "user_id": 2}
+    ]
+}
 
-    async def dispatch(self, request: Request, call_next):
-        start_time = time.time()
-        
-        # Log request
-        self.logger.info(
-            "request_started",
-            method=request.method,
-            url=str(request.url),
-            client_ip=request.client.host if request.client else None
-        )
-        
-        response = await call_next(request)
-        
-        # Log response
-        process_time = time.time() - start_time
-        self.logger.info(
-            "request_completed",
-            method=request.method,
-            url=str(request.url),
-            status_code=response.status_code,
-            process_time=process_time
-        )
-        
-        return response
+# Tool definitions using the @mcp.tool decorator
+@mcp.tool()
+def get_user(user_id: int) -> Dict[str, Any]:
+    """Get user information by ID"""
+    user = next((u for u in data_store["users"] if u["id"] == user_id), None)
+    if user:
+        return {"status": "success", "user": user}
+    return {"status": "error", "message": "User not found"}
 
-def create_monitored_server():
-    mcp = FastMCP("monitored-server", version="1.0.0")
+@mcp.tool()
+def list_users() -> List[Dict[str, Any]]:
+    """List all users"""
+    return data_store["users"]
+
+@mcp.tool()
+def create_user(name: str, email: str) -> Dict[str, Any]:
+    """Create a new user"""
+    new_id = max(u["id"] for u in data_store["users"]) + 1
+    new_user = {"id": new_id, "name": name, "email": email}
+    data_store["users"].append(new_user)
+    return {"status": "success", "user": new_user}
+
+@mcp.tool()
+def get_tasks(user_id: int = None) -> List[Dict[str, Any]]:
+    """Get tasks, optionally filtered by user_id"""
+    if user_id:
+        return [t for t in data_store["tasks"] if t["user_id"] == user_id]
+    return data_store["tasks"]
+
+@mcp.tool()
+def create_task(title: str, user_id: int) -> Dict[str, Any]:
+    """Create a new task for a user"""
+    # Verify user exists
+    user = next((u for u in data_store["users"] if u["id"] == user_id), None)
+    if not user:
+        return {"status": "error", "message": "User not found"}
     
-    @mcp.tool()
-    def monitored_tool(param: str) -> dict:
-        logger = structlog.get_logger()
-        logger.info("tool_called", tool_name="monitored_tool", param=param)
-        return {"result": f"Processed: {param}"}
+    new_id = max(t["id"] for t in data_store["tasks"]) + 1
+    new_task = {"id": new_id, "title": title, "completed": False, "user_id": user_id}
+    data_store["tasks"].append(new_task)
+    return {"status": "success", "task": new_task}
+
+@mcp.tool()
+def update_task(task_id: int, completed: bool = None, title: str = None) -> Dict[str, Any]:
+    """Update a task's completion status or title"""
+    task = next((t for t in data_store["tasks"] if t["id"] == task_id), None)
+    if not task:
+        return {"status": "error", "message": "Task not found"}
     
-    # Create FastAPI app with monitoring
-    app = FastAPI()
-    app.add_middleware(LoggingMiddleware)
+    if completed is not None:
+        task["completed"] = completed
+    if title is not None:
+        task["title"] = title
     
-    # Add metrics endpoint
-    @app.get("/metrics")
-    async def metrics():
+    return {"status": "success", "task": task}
+
+@mcp.tool()
+def calculate(expression: str) -> Dict[str, Any]:
+    """
+    Safely evaluate a mathematical expression
+    Supports basic arithmetic operations (+, -, *, /, **, %)
+    """
+    try:
+        # Basic safety check - only allow specific characters
+        allowed_chars = set("0123456789+-*/.() %")
+        if not all(c in allowed_chars for c in expression.replace(" ", "")):
+            return {"status": "error", "message": "Invalid characters in expression"}
+        
+        # Evaluate the expression
+        result = eval(expression)
+        return {"status": "success", "result": result, "expression": expression}
+    except Exception as e:
+        return {"status": "error", "message": f"Error evaluating expression: {str(e)}"}
+
+# Resource definitions using the @mcp.resource decorator
+@mcp.resource("user://list")
+def user_list_resource() -> str:
+    """Resource providing user list as JSON"""
+    return json.dumps(data_store["users"], indent=2)
+
+@mcp.resource("task://list")
+def task_list_resource() -> str:
+    """Resource providing task list as JSON"""
+    return json.dumps(data_store["tasks"], indent=2)
+
+@mcp.resource("user://{user_id}")
+def user_resource(user_id: int) -> str:
+    """Resource providing specific user data"""
+    user = next((u for u in data_store["users"] if u["id"] == user_id), None)
+    if user:
+        return json.dumps(user, indent=2)
+    return json.dumps({"error": "User not found"}, indent=2)
+
+# Prompt templates using the @mcp.prompt decorator
+@mcp.prompt()
+def user_summary_prompt(user_id: int) -> str:
+    """Generate a summary prompt for a specific user"""
+    user = next((u for u in data_store["users"] if u["id"] == user_id), None)
+    if not user:
+        return "User not found"
+    
+    user_tasks = [t for t in data_store["tasks"] if t["user_id"] == user_id]
+    completed_tasks = [t for t in user_tasks if t["completed"]]
+    
+    return f"""
+    User Summary for {user['name']}:
+    - Email: {user['email']}
+    - Total tasks: {len(user_tasks)}
+    - Completed tasks: {len(completed_tasks)}
+    - Pending tasks: {len(user_tasks) - len(completed_tasks)}
+    
+    Task details:
+    {json.dumps(user_tasks, indent=2)}
+    """
+
+@mcp.prompt()
+def system_status_prompt() -> str:
+    """Generate a system status prompt"""
+    return f"""
+    System Status:
+    - Total users: {len(data_store['users'])}
+    - Total tasks: {len(data_store['tasks'])}
+    - Completed tasks: {len([t for t in data_store['tasks'] if t['completed']])}
+    - Pending tasks: {len([t for t in data_store['tasks'] if not t['completed']])}
+    
+    Recent activity summary available via tools.
+    """
+
+# Custom health check route
+@mcp.custom_route("GET", "/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "transport": "streamable-http"}
+
+# Main function to run the server
+def main():
+    """Run the FastMCP server with Streamable HTTP transport"""
+    print("Starting FastMCP server with Streamable HTTP transport...")
+    
+    # Run with Streamable HTTP transport (recommended for remote servers)
+    mcp.run(
+        transport="streamable-http",  # or just "http" (alias)
+        host="0.0.0.0",              # Listen on all interfaces
+        port=8000,                   # Port number
+        path="/mcp",                 # MCP endpoint path
+        log_level="info"             # Logging level
+    )
+
+# Alternative async main function
+async def main_async():
+    """Run the FastMCP server asynchronously"""
+    print("Starting FastMCP server with Streamable HTTP transport (async)...")
+    
+    await mcp.run_async(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=8000,
+        path="/mcp",
+        log_level="info"
+    )
+
+# FastAPI integration example
+def create_fastapi_app():
+    """
+    Example of integrating FastMCP with FastAPI for more advanced use cases
+    """
+    from fastapi import FastAPI
+    
+    # Create FastAPI app
+    app = FastAPI(title="FastMCP + FastAPI Demo")
+    
+    # Mount the FastMCP server
+    app.mount("/mcp-server", mcp.streamable_http_app())
+    
+    # Add custom FastAPI routes
+    @app.get("/")
+    async def root():
+        return {"message": "FastMCP + FastAPI Integration"}
+    
+    @app.get("/api/stats")
+    async def get_stats():
         return {
-            "tools_available": len(mcp.list_tools()),
-            "server_status": "healthy"
+            "users": len(data_store["users"]),
+            "tasks": len(data_store["tasks"]),
+            "completed_tasks": len([t for t in data_store["tasks"] if t["completed"]])
         }
     
-    app.mount("/mcp", mcp.streamable_http_app())
-    
     return app
-"""
 
-# =============================================================================
-# Testing Configuration
-# =============================================================================
-
-TESTING_CONFIG = """
-# Testing configuration for FastMCP server
-import pytest
-import asyncio
-from fastmcp import FastMCP
-from fastmcp.transports import StreamableHTTPTransport
-
-@pytest.fixture
-async def test_server():
-    mcp = FastMCP("test-server")
+if __name__ == "__main__":
+    # Run the server
+    main()
     
-    @mcp.tool()
-    def test_tool(param: str) -> dict:
-        return {"result": f"test: {param}"}
+    # For async context, use:
+    # asyncio.run(main_async())
     
-    # Start server in background
-    server_task = asyncio.create_task(
-        mcp.run_async(
-            transport="streamable-http",
-            host="127.0.0.1",
-            port=8888,
-            path="/mcp"
-        )
-    )
-    
-    # Wait for server to start
-    await asyncio.sleep(0.1)
-    
-    yield "http://127.0.0.1:8888/mcp"
-    
-    # Cleanup
-    server_task.cancel()
-    try:
-        await server_task
-    except asyncio.CancelledError:
-        pass
-
-@pytest.mark.asyncio
-async def test_server_connection(test_server):
-    client = FastMCP.create_client()
-    
-    try:
-        await client.connect(test_server)
-        tools = await client.list_tools()
-        assert len(tools) > 0
-        assert tools[0]["name"] == "test_tool"
-        
-        result = await client.call_tool("test_tool", param="hello")
-        assert result["result"] == "test: hello"
-        
-    finally:
-        await client.close()
-"""
-
-print("FastMCP Deployment Configuration Examples")
-print("=" * 50)
-print("This module provides comprehensive deployment examples for FastMCP servers")
-print("using the Streamable HTTP transport protocol.")
-print("")
-print("Available deployment types:")
-print("- basic: Simple standalone server")
-print("- docker: Docker containerized deployment")
-print("- cloud-run: Google Cloud Run serverless deployment")
-print("- fastapi: FastAPI integration")
-print("- load-balanced: Load balancer ready deployment")
-print("- development: Development server with debugging")
-print("- auth: Authentication-enabled server")
-print("")
-print("Set DEPLOYMENT_TYPE environment variable to choose deployment type.")
-print("Example: DEPLOYMENT_TYPE=docker python deployment_config.py")
+    # For FastAPI integration, use:
+    # import uvicorn
+    # app = create_fastapi_app()
+    # uvicorn.run(app, host="0.0.0.0", port=8000)
